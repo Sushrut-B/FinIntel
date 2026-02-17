@@ -1,0 +1,10 @@
+venv/
+upi-macro-intel/venv/
+__pycache__/
+*.exe
+*.dll
+*.lib
+*.pt
+*.pth
+*.zip
+.env
