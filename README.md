@@ -364,5 +364,10 @@ This builds and spawns:
 
 Contributions, issues, and feature requests are welcome! Feel free to file issues or submit pull requests.
 
+## 👥 Author
+
+* **Sushrut Bankalgi**
+
 ## 📄 License
+
 This project is proprietary and confidential. Unauthorized distribution or copying is strictly prohibited.
