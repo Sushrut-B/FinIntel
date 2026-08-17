@@ -2,8 +2,8 @@ import requests
 import pandas as pd
 
 API_BASE_URL = "http://localhost:8000"
-USERNAME = "your_username"  # Replace with your API login username
-PASSWORD = "your_password"  # Replace with your API login password
+USERNAME = "sushrut"  # Replace with your API login username
+PASSWORD = "sushrutpass"  # Replace with your API login password
 
 def export_actuals():
     auth = (USERNAME, PASSWORD)
