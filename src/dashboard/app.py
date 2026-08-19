@@ -108,7 +108,7 @@ def load_data():
     actuals = fetch_json(f"{API_BASE_URL}/actuals")
     nbeats = fetch_json(f"{API_BASE_URL}/forecast?model=NBEATSx")
     tft = fetch_json(f"{API_BASE_URL}/forecast?model=TFT")
-    linreg = fetch_json(f"{API_BASE_URL}/forecast?model=LinearRegression")
+    linreg = fetch_json(f"{API_BASE_URL}/forecast?model=GradientBoosting")
     anomalies = fetch_json(f"{API_BASE_URL}/anomalies")
 
     df_actuals = pd.DataFrame(actuals)
@@ -127,17 +127,15 @@ def load_data():
 
     df_nbeats = prep_forecast(pd.DataFrame(nbeats), "NBEATSx")
     df_tft = prep_forecast(pd.DataFrame(tft), "TFT")
-    df_linreg = prep_forecast(pd.DataFrame(linreg), "LinearRegression")
+    df_gb = prep_forecast(pd.DataFrame(linreg), "Gradient Boosting (ML)")
 
     df_anomalies = pd.DataFrame(anomalies)
     if not df_anomalies.empty:
         df_anomalies["ds"] = pd.to_datetime(df_anomalies["ds"])
         df_anomalies["ds"] = df_anomalies["ds"].dt.to_period("M").dt.to_timestamp()
         if "type" not in df_anomalies.columns:
-            df_anomalies["type"] = np.random.choice(
-                ["Spike", "Drop", "Seasonal Outlier"], len(df_anomalies)
-            )
-    return df_actuals, df_nbeats, df_tft, df_linreg, df_anomalies
+            df_anomalies["type"] = "Spike"  # Safe default if data format is incomplete
+    return df_actuals, df_nbeats, df_tft, df_gb, df_anomalies
 
 def generate_report_pdf(text):
     pdf = FPDF()
@@ -183,7 +181,7 @@ def main():
     if st.sidebar.button("Refresh API Status"):
         st.rerun()
 
-    df_actuals, df_nbeats, df_tft, df_linreg, df_anomalies = load_data()
+    df_actuals, df_nbeats, df_tft, df_gb, df_anomalies = load_data()
 
     min_date = df_actuals["ds"].min() if not df_actuals.empty else None
     max_date = df_actuals["ds"].max() if not df_actuals.empty else None
@@ -194,7 +192,7 @@ def main():
     anomaly_types = ["All"] + sorted(df_anomalies["type"].unique()) if not df_anomalies.empty else ["All"]
     selected_anomalies = st.sidebar.multiselect("Filter Anomaly Types", anomaly_types, default=["All"])
 
-    model_options = {"NBEATSx": df_nbeats, "TFT": df_tft, "LinearRegression": df_linreg}
+    model_options = {"NBEATSx": df_nbeats, "TFT": df_tft, "Gradient Boosting (ML)": df_gb}
     selected_models = st.sidebar.multiselect("Select Models", list(model_options.keys()), default=["NBEATSx", "TFT"])
 
     filtered_actuals = df_actuals[(df_actuals["ds"] >= date_start) & (df_actuals["ds"] <= date_end)] if not df_actuals.empty else pd.DataFrame()

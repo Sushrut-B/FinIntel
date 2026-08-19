@@ -1,3 +1,4 @@
+import sys
 import subprocess
 import time
 
@@ -5,7 +6,7 @@ import time
 def main():
     # Start FastAPI server
     fastapi_proc = subprocess.Popen([
-        "uvicorn", "src.api.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"
+        sys.executable, "-m", "uvicorn", "src.api.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"
     ])
 
     # Wait a few seconds for FastAPI to start
@@ -13,12 +14,12 @@ def main():
 
     # Start Streamlit dashboard
     streamlit_proc = subprocess.Popen([
-        "streamlit", "run", "src/dashboard/app.py"
+        sys.executable, "-m", "streamlit", "run", "src/dashboard/app.py"
     ])
 
     # Start scheduler for automated retraining with alerts
     scheduler_proc = subprocess.Popen([
-        "python", "src/utils/schedule_retrain.py"
+        sys.executable, "src/utils/schedule_retrain.py"
     ])
 
     try:

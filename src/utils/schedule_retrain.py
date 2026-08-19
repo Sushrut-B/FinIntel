@@ -2,14 +2,17 @@ import subprocess
 import datetime
 import time
 
+import sys
+
 def retrain_models():
-    print(f"Retraining started at {datetime.datetime.now()}")
-    # Run your retraining script or commands here; adjust path as needed
-    result = subprocess.run(["python", "src/ml/retrain_models.py"], capture_output=True, text=True)
+    print(f"Retraining and data updates started at {datetime.datetime.now()}")
+    # Run master pipelines orchestrator
+    result = subprocess.run([sys.executable, "run_all_pipelines.py"], capture_output=True, text=True)
     if result.returncode == 0:
-        print("Retraining completed successfully.")
+        print("Retraining and data pipeline completed successfully.")
+        print(result.stdout)
     else:
-        print("Retraining failed:")
+        print("Retraining and data pipeline failed:")
         print(result.stderr)
 
 if __name__ == "__main__":

@@ -1,26 +1,38 @@
-import pandas as pd
-import numpy as np
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-# Configurable threshold multiplier (lowered to 2 for more sensitivity)
+import pandas as pd
+from src.services.anomaly_detector import detect_and_classify_anomalies
+
+# Configurable threshold multiplier
 THRESHOLD_MULTIPLIER = 1.5
 
-# Load actuals and forecast data
-gold = pd.read_parquet("data/gold/upi_macro_gold.parquet").rename(columns={"month": "ds", "amount": "y"})
-gold["ds"] = pd.to_datetime(gold["ds"]).dt.to_period("M").dt.to_timestamp("M")
+def main():
+    # Load actuals and forecast data
+    try:
+        gold = pd.read_parquet("data/gold/upi_macro_gold.parquet").rename(columns={"month": "ds", "amount": "y"})
+    except Exception as e:
+        print(f"Error loading actuals data: {e}")
+        return
 
-preds = pd.read_csv("data/gold/upi_forecast_backtest.csv")
-preds["ds"] = pd.to_datetime(preds["ds"]).dt.to_period("M").dt.to_timestamp("M")
+    try:
+        preds = pd.read_csv("data/gold/upi_forecast_backtest_nbeats.csv")
+    except Exception as e:
+        print(f"Error loading forecast data: {e}")
+        return
 
-# Merge actuals and predictions
-eval_df = pd.merge(gold, preds, on="ds", how="inner")
+    # Use the unified service
+    anomalies = detect_and_classify_anomalies(
+        actuals_df=gold,
+        forecast_df=preds,
+        forecast_col="NBEATSx",
+        threshold_multiplier=THRESHOLD_MULTIPLIER
+    )
 
-# Calculate residuals and detect anomalies
-eval_df["residual"] = eval_df["y"] - eval_df["NBEATSx"]  # Adjust column if forecast column name differs
-threshold = THRESHOLD_MULTIPLIER * eval_df["residual"].std()
+    # Save anomalies
+    anomalies.to_csv("data/gold/upi_anomalies.csv", index=False)
+    print(f"Anomaly detection complete. {len(anomalies)} anomalies saved using unified service.")
 
-anomalies = eval_df[eval_df["residual"].abs() > threshold]
-
-# Save anomalies for dashboard
-anomalies[["ds", "y", "NBEATSx", "residual"]].to_csv("data/gold/upi_anomalies.csv", index=False)
-
-print(f"Anomaly detection complete. {len(anomalies)} anomalies saved.")
+if __name__ == "__main__":
+    main()

@@ -1,3 +1,4 @@
+import sys
 import subprocess
 import logging
 
@@ -11,7 +12,7 @@ def main():
     try:
         logging.info("Starting training pipeline...")
         result = subprocess.run(
-            "python src/train_pipeline.py",
+            f'"{sys.executable}" src/train_pipeline.py',
             shell=True,
             capture_output=True,
             text=True

@@ -1,28 +1,36 @@
 import pandas as pd
-
-def get_holidays():
-    # Minimal festival list for MVP
-    holidays = [
-        "2025-01-26", # Republic Day
-        "2025-03-14", # Holi (example date)
-        "2025-08-15", # Independence Day
-        "2025-11-12", # Diwali
-    ]
-    return pd.to_datetime(holidays)
+import holidays as pyholidays
 
 def add_calendar_features(df, date_col="date"):
     df = df.copy()
     df[date_col] = pd.to_datetime(df[date_col])
-    df["dow"] = df[date_col].dt.dayofweek   # 0=Mon
-    df["dom"] = df[date_col].dt.day
-    df["month"] = df[date_col].dt.month
-    df["eom"] = df[date_col].dt.is_month_end.astype(int)
-
-    # Salary window: 1st–7th
-    df["salary_window"] = df["dom"].between(1,7).astype(int)
-
-    # Holidays
-    holidays = get_holidays()
-    df["is_holiday"] = df[date_col].isin(holidays).astype(int)
-
+    
+    # Extract baseline date indices
+    df["month_idx"] = df[date_col].dt.month
+    df["quarter_idx"] = df[date_col].dt.quarter
+    df["year_idx"] = df[date_col].dt.year
+    
+    # Query India holidays dynamically for all years in the dataset
+    years = list(df[date_col].dt.year.unique())
+    if not years:
+        years = [2024]
+        
+    in_holidays = pyholidays.India(years=years)
+    
+    # Construct holidays dataframe to group by month
+    holiday_dates = pd.to_datetime(list(in_holidays.keys()))
+    holiday_df = pd.DataFrame({"holiday_date": holiday_dates})
+    holiday_df["year_idx"] = holiday_df["holiday_date"].dt.year
+    holiday_df["month_idx"] = holiday_df["holiday_date"].dt.month
+    
+    # Count holidays per month
+    holiday_counts = holiday_df.groupby(["year_idx", "month_idx"]).size().rename("holiday_count").reset_index()
+    
+    # Merge with original dataframe
+    df = df.merge(holiday_counts, on=["year_idx", "month_idx"], how="left")
+    df["holiday_count"] = df["holiday_count"].fillna(0).astype(int)
+    
+    # Flag months with substantial holiday concentrations
+    df["is_holiday_month"] = (df["holiday_count"] >= 2).astype(int)
+    
     return df

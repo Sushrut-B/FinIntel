@@ -21,7 +21,7 @@ def send_anomaly_alert(anomalies_df, to_email):
     ALERT_EMAIL_PASSWORD = os.getenv("ALERT_EMAIL_PASSWORD")  # Must be set in environment
 
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
             server.starttls()
             server.login(ALERT_EMAIL, ALERT_EMAIL_PASSWORD)
             server.send_message(msg)

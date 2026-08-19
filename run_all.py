@@ -11,24 +11,24 @@ def run_command(cmd, wait=True):
 
 def main():
     # Start FastAPI server
-    fastapi_proc = run_command("uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000", wait=False)
+    fastapi_proc = run_command(f'"{sys.executable}" -m uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000', wait=False)
 
     # Wait for FastAPI to start fully
     time.sleep(7)
 
     # Export actuals
     print("Running export_actuals.py ...")
-    run_command("python export_actuals.py")
+    run_command(f'"{sys.executable}" export_actuals.py')
 
     # Generate forecast
     print("Running generate_future_forecast.py ...")
-    run_command("python generate_future_forecast.py")
+    run_command(f'"{sys.executable}" generate_future_forecast.py')
 
     # Start Streamlit dashboard
-    streamlit_proc = run_command("streamlit run src/dashboard/app.py", wait=False)
+    streamlit_proc = run_command(f'"{sys.executable}" -m streamlit run src/dashboard/app.py', wait=False)
 
     # Start scheduler
-    scheduler_proc = run_command("python src/utils/schedule_retrain.py", wait=False)
+    scheduler_proc = run_command(f'"{sys.executable}" src/utils/schedule_retrain.py', wait=False)
 
     def shutdown(*args):
         print("Shutting down all processes ...")

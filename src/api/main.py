@@ -46,25 +46,45 @@ async def generic_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error: {exc}")
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
-# Load datasets once at startup
-try:
-    gold_df = pd.read_parquet("data/gold/upi_macro_gold.parquet").rename(columns={"month": "ds", "amount": "y"})
-    forecast_nbeats_df = pd.read_csv("data/gold/upi_forecast_backtest.csv")
-    forecast_tft_df = pd.read_csv("data/gold/upi_forecast_backtest_tft.csv")
-    anomalies_df = pd.read_csv("data/gold/upi_anomalies.csv") if pd.io.common.file_exists("data/gold/upi_anomalies.csv") else pd.DataFrame()
+# Helper functions to load data dynamically (prevents stale data serving)
+def load_gold_df():
+    try:
+        df = pd.read_parquet("data/gold/upi_macro_gold.parquet").rename(columns={"month": "ds", "amount": "y"})
+        df["ds"] = pd.to_datetime(df["ds"])
+        return df
+    except Exception as e:
+        logger.error(f"Error loading gold dataset: {e}")
+        return pd.DataFrame()
 
-    gold_df["ds"] = pd.to_datetime(gold_df["ds"])
-    forecast_nbeats_df["ds"] = pd.to_datetime(forecast_nbeats_df["ds"])
-    forecast_tft_df["ds"] = pd.to_datetime(forecast_tft_df["ds"])
-    if not anomalies_df.empty:
-        anomalies_df["ds"] = pd.to_datetime(anomalies_df["ds"])
-    logger.info("Datasets loaded successfully.")
-except Exception as e:
-    logger.error(f"Error loading datasets: {e}")
-    gold_df = pd.DataFrame()
-    forecast_nbeats_df = pd.DataFrame()
-    forecast_tft_df = pd.DataFrame()
-    anomalies_df = pd.DataFrame()
+def load_forecast_df(model_name: str):
+    try:
+        if model_name.lower() == "nbeatsx":
+            file_path = "data/gold/upi_forecast_backtest_nbeats.csv"
+        elif model_name.lower() == "tft":
+            file_path = "data/gold/upi_forecast_backtest_tft.csv"
+        elif model_name.lower() in ("linearregression", "linreg", "gradientboosting", "gb"):
+            file_path = "data/gold/upi_forecast_backtest_linreg.csv"
+        else:
+            return pd.DataFrame()
+
+        df = pd.read_csv(file_path)
+        df["ds"] = pd.to_datetime(df["ds"])
+        return df
+    except Exception as e:
+        logger.error(f"Error loading forecast for model {model_name}: {e}")
+        return pd.DataFrame()
+
+def load_anomalies_df():
+    try:
+        file_path = "data/gold/upi_anomalies.csv"
+        if pd.io.common.file_exists(file_path):
+            df = pd.read_csv(file_path)
+            df["ds"] = pd.to_datetime(df["ds"])
+            return df
+        return pd.DataFrame()
+    except Exception as e:
+        logger.error(f"Error loading anomalies dataset: {e}")
+        return pd.DataFrame()
 
 @app.get("/")
 def root():
@@ -74,7 +94,9 @@ def root():
 @app.get("/actuals")
 def get_actuals(start_date: Optional[str] = None, end_date: Optional[str] = None, user: str = Depends(auth_required)):
     try:
-        df = gold_df
+        df = load_gold_df()
+        if df.empty:
+            return []
         if start_date:
             df = df[df["ds"] >= pd.to_datetime(start_date)]
         if end_date:
@@ -88,13 +110,23 @@ def get_actuals(start_date: Optional[str] = None, end_date: Optional[str] = None
 @app.get("/forecast")
 def get_forecast(model: str, start_date: Optional[str] = None, end_date: Optional[str] = None, user: str = Depends(auth_required)):
     try:
-        if model.lower() == "nbeatsx":
-            df = forecast_nbeats_df.rename(columns={"NBEATSx": "forecast"})
-        elif model.lower() == "tft":
-            df = forecast_tft_df.rename(columns={"TFT": "forecast"})
-        else:
+        if model.lower() not in ("nbeatsx", "tft", "linearregression", "linreg", "gradientboosting", "gb"):
             logger.warning(f"User {user} passed invalid model: {model}")
-            raise HTTPException(status_code=400, detail="Model must be 'NBEATSx' or 'TFT'")
+            raise HTTPException(status_code=400, detail="Model must be 'NBEATSx', 'TFT', 'LinearRegression', or 'GradientBoosting'")
+
+        df = load_forecast_df(model)
+        if df.empty:
+            return []
+
+        # Rename column for uniform contract if it is NBEATSx, TFT, or forecast
+        if model.lower() == "nbeatsx" and "NBEATSx" in df.columns:
+            df = df.rename(columns={"NBEATSx": "forecast"})
+        elif model.lower() == "tft" and "TFT" in df.columns:
+            df = df.rename(columns={"TFT": "forecast"})
+        elif "forecast" not in df.columns:
+            non_ds_cols = [c for c in df.columns if c != "ds"]
+            if non_ds_cols:
+                df = df.rename(columns={non_ds_cols[0]: "forecast"})
 
         if start_date:
             df = df[df["ds"] >= pd.to_datetime(start_date)]
@@ -102,6 +134,8 @@ def get_forecast(model: str, start_date: Optional[str] = None, end_date: Optiona
             df = df[df["ds"] <= pd.to_datetime(end_date)]
         logger.info(f"Forecast requested by user {user}: model={model}, start={start_date}, end={end_date}, records={len(df)}")
         return df[["ds", "forecast"]].to_dict(orient="records")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in /forecast endpoint: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch forecast")
@@ -109,9 +143,9 @@ def get_forecast(model: str, start_date: Optional[str] = None, end_date: Optiona
 @app.get("/anomalies")
 def get_anomalies(start_date: Optional[str] = None, end_date: Optional[str] = None, user: str = Depends(auth_required)):
     try:
-        if anomalies_df.empty:
+        df = load_anomalies_df()
+        if df.empty:
             return []
-        df = anomalies_df
         if start_date:
             df = df[df["ds"] >= pd.to_datetime(start_date)]
         if end_date:

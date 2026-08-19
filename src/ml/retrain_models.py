@@ -1,4 +1,8 @@
 # src/ml/retrain_models.py
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 from src.utils.alerting import send_anomaly_alert
 
 import pandas as pd
@@ -8,52 +12,64 @@ from datetime import datetime
 def retrain():
     print(f"Model retraining started at {datetime.now()}")
 
-    # Load your latest training data
+    # Load your latest training data containing engineered features
     try:
-        data = pd.read_parquet("data/gold/upi_macro_gold.parquet")
-        # --- Removed artificial anomaly injection ---
-        # data.loc[0, 'amount'] = data.loc[0, 'amount'] * 10
+        data = pd.read_parquet("data/gold/upi_macro_features.parquet")
     except Exception as e:
-        print(f"Error loading training data: {e}")
+        print(f"Error loading training features data: {e}")
         return
 
-    # Example: simple linear regression training (replace with your actual model logic)
-    from sklearn.linear_model import LinearRegression
+    # Train an optimized Gradient Boosting Regressor (ML based)
+    from sklearn.ensemble import GradientBoostingRegressor
 
     try:
-        # Prepare features and target (example)
-        # Assume 'month' as datetime feature and 'amount' as target
-        data['month_num'] = data['month'].dt.month + 12 * (data['month'].dt.year - data['month'].dt.year.min())
-        X = data[['month_num']]
+        # Select active engineered features
+        feature_cols = [
+            'month_idx', 'quarter_idx', 'holiday_count', 'is_holiday_month',
+            'lag_amount_1m', 'lag_amount_2m', 'lag_amount_3m',
+            'lag_volume_1m', 'lag_volume_2m', 'lag_volume_3m',
+            'roll_amount_3m_mean', 'roll_amount_3m_std',
+            'roll_volume_3m_mean', 'roll_volume_3m_std'
+        ]
+        
+        X = data[feature_cols]
         y = data['amount']
 
-        model = LinearRegression()
+        model = GradientBoostingRegressor(n_estimators=100, max_depth=3, learning_rate=0.1, random_state=42)
         model.fit(X, y)
 
         # Save the trained model
+        os.makedirs("models", exist_ok=True)
+        joblib.dump(model, "models/gradient_boosting_model.pkl")
+        # Keep linear_regression_model.pkl as fallback link
         joblib.dump(model, "models/linear_regression_model.pkl")
-        print("Model retrained and saved successfully.")
+        print("Gradient Boosting Regressor retrained and saved successfully.")
 
-        # Generate updated forecasts and save CSV
+        # Generate forecasts
         data['forecast'] = model.predict(X)
         forecast_df = data[['month', 'forecast']].rename(columns={'month': 'ds'})
-        forecast_df.to_csv("data/gold/upi_forecast_backtest.csv", index=False)
-        print("Updated forecasts saved.")
+        forecast_df.to_csv("data/gold/upi_forecast_backtest_linreg.csv", index=False)
+        print("Updated forecasts saved to upi_forecast_backtest_linreg.csv")
 
-        # Detect anomalies based on residuals
-        eval_df = data.copy()
-        eval_df['residual'] = eval_df['amount'] - eval_df['forecast']
-        threshold = 3 * eval_df['residual'].std()
-        anomalies_detected = eval_df[eval_df['residual'].abs() > threshold]
+        # Detect anomalies using the unified service
+        from src.services.anomaly_detector import detect_and_classify_anomalies
+
+        actuals_df = data.rename(columns={'month': 'ds', 'amount': 'y'})
+        forecast_df = data.rename(columns={'month': 'ds'})
+
+        anomalies_detected = detect_and_classify_anomalies(
+            actuals_df=actuals_df,
+            forecast_df=forecast_df,
+            forecast_col="forecast",
+            threshold_multiplier=1.5
+        )
 
         # Optionally save anomalies for reference
         if not anomalies_detected.empty:
-            anomalies_detected[['month', 'amount', 'forecast', 'residual']].rename(columns={'month': 'ds', 'amount': 'y'}).to_csv("data/gold/upi_anomalies.csv", index=False)
-            print(f"Anomalies detected: {len(anomalies_detected)} and saved.")
+            anomalies_detected.to_csv("data/gold/upi_anomalies.csv", index=False)
+            print(f"Anomalies detected: {len(anomalies_detected)} and saved using unified service.")
         else:
             print("No significant anomalies detected.")
-            # If you want, remove existing anomalies file if none detected
-            import os
             anomaly_file = "data/gold/upi_anomalies.csv"
             if os.path.exists(anomaly_file):
                 os.remove(anomaly_file)
@@ -61,8 +77,7 @@ def retrain():
 
         # Send anomaly alert email if anomalies detected
         if not anomalies_detected.empty:
-            send_anomaly_alert(anomalies_detected.rename(columns={'month': 'ds', 'amount': 'y', 'forecast': 'forecast', 'residual': 'residual'}),
-                              to_email="bankalgisushrut@gmail.com")
+            send_anomaly_alert(anomalies_detected, to_email="bankalgisushrut@gmail.com")
 
     except Exception as e:
         print(f"Error during model retraining or forecast generation: {e}")

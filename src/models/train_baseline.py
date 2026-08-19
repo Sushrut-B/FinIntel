@@ -44,8 +44,8 @@ def train_backtest(df):
     print(f"Backtest MAE: {mae}")
     print(f"Backtest MAPE: {mape:.2f}%")
 
-    preds.to_csv("data/gold/upi_forecast_backtest.csv", index=False)
-    print("Backtest forecast saved to data/gold/upi_forecast_backtest.csv")
+    preds.to_csv("data/gold/upi_forecast_backtest_nbeats.csv", index=False)
+    print("Backtest forecast saved to data/gold/upi_forecast_backtest_nbeats.csv")
 
 if __name__ == "__main__":
     df = load_data("data/gold/upi_macro_gold.parquet")
