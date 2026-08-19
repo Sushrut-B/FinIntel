@@ -1,7 +1,6 @@
 # FinIntel: UPI Macro Intelligence Platform 📊🤖
 
 FinIntel is an enterprise-grade data intelligence, time-series forecasting, and anomaly detection platform designed to analyze and predict Indian Unified Payments Interface (UPI) transaction flows. By scraping macro-level transaction statistics from the official National Payments Corporation of India (NPCI) portal and ingesting localized merchant/peer transaction structures from the PhonePe Pulse dataset, FinIntel implements a multi-stage **Medallion Lakehouse Architecture** to feed advanced deep learning forecasting models ([N-BEATSx](file:///c:/Sushrut/CODING/Python/ML/upi-macro-intel/src/models/train_baseline.py) and [Temporal Fusion Transformer](file:///c:/Sushrut/CODING/Python/ML/upi-macro-intel/src/models/train_tft.py)). It automatically flags and alerts volume anomalies using residuals-based analysis, presenting all insights in a secure, interactive web dashboard.
-
 ---
 
 ## 🌟 Key Features
@@ -32,76 +31,71 @@ graph TD
     classDef client fill:#0369A1,stroke:#0284c7,stroke-width:2px,color:#fff;
 
     %% Data Sources
-    subgraph Data Sources (Raw)
+    subgraph DS ["Data Sources (Raw)"]
         NPCIWeb["🌐 NPCI Product Stats Website"]:::raw
         PhonePeRepo["📂 PhonePe Pulse State JSONs"]:::raw
     end
 
     %% Ingestion Layer
-    subgraph Ingestion & Transformation (Medallion)
+    subgraph Medallion ["Ingestion & Transformation (Medallion)"]
         Ingest["📥 Data Ingestors<br/>(ingest_npci.py / ingest_phonepe.py)"]:::service
         Bronze["🟫 Bronze Parquet Tables<br/>(npci_stats.parquet / phonepe_txn.parquet)"]:::bronze
-        Transform["⚙️ Transformers<br/>(transform.py / transform_npci.py)"]:::service
-        Silver["🥈 Silver Parquet Tables<br/>(npci_stats_silver.parquet / phonepe_txn_silver.parquet)"]:::silver
-        Features["🛠️ Feature Builder<br/>(feature_builder.py / holiday_calendar.py)"]:::service
-        SilverFeat["🥈 Silver Features Table<br/>(npci_features.parquet)"]:::silver
-        Merge["🔗 Merger<br/>(merge_silver.py)"]:::service
+        Transform["⚙️ Transformer & Merger<br/>(transform_and_merge.py)"]:::service
         Gold["🥇 Gold Parquet Table<br/>(upi_macro_gold.parquet)"]:::gold
+        Features["🛠️ Feature Builder<br/>(feature_builder.py / holiday_calendar.py)"]:::service
+        GoldFeat["🥇 Gold Features Table<br/>(upi_macro_features.parquet)"]:::gold
     end
 
     NPCIWeb -->|Scraped by src/data/ingest_npci.py| Ingest
     PhonePeRepo -->|Loaded by src/data/ingest_phonepe.py| Ingest
     Ingest --> Bronze
     Bronze --> Transform
-    Transform --> Silver
-    Silver --> Features
-    Features --> SilverFeat
-    Silver --> Merge
-    Merge --> Gold
+    Transform --> Gold
+    Gold --> Features
+    Features --> GoldFeat
 
     %% Machine Learning Layer
-    subgraph Machine Learning & Modeling
+    subgraph ML ["Machine Learning & Modeling"]
         TrainBaseline["💜 Train N-BEATSx<br/>(train_baseline.py)"]:::ml
         TrainTFT["💜 Train TFT<br/>(train_tft.py)"]:::ml
-        ProphetSim["🧡 Future Simulation<br/>(generate_future_forecast.py)"]:::ml
-        AnomalyDetect["⚠️ Anomaly Detector<br/>(run_anomaly_detection.py)"]:::ml
+        GBRetrain["💜 Train Gradient Boosting<br/>(retrain_models.py)"]:::ml
+        AnomalyDetect["⚠️ Anomaly Detector Service<br/>(anomaly_detector.py)"]:::ml
         
-        BacktestNBEATS["📄 NBEATSx Backtest CSV<br/>(upi_forecast_backtest.csv)"]:::gold
+        BacktestNBEATS["📄 NBEATSx Backtest CSV<br/>(upi_forecast_backtest_nbeats.csv)"]:::gold
         BacktestTFT["📄 TFT Backtest CSV<br/>(upi_forecast_backtest_tft.csv)"]:::gold
-        FutureForecast["📄 Simulated Future CSV<br/>(future_forecast.csv)"]:::gold
+        BacktestGB["📄 GB Backtest CSV<br/>(upi_forecast_backtest_linreg.csv)"]:::gold
         AnomaliesCSV["⚠️ Flagged Anomalies CSV<br/>(upi_anomalies.csv)"]:::gold
     end
 
-    Gold --> TrainBaseline
-    Gold --> TrainTFT
-    Gold --> AnomalyDetect
-    Gold --> ProphetSim
+    GoldFeat --> TrainBaseline
+    GoldFeat --> TrainTFT
+    GoldFeat --> GBRetrain
+    GoldFeat --> AnomalyDetect
 
     TrainBaseline --> BacktestNBEATS
     TrainTFT --> BacktestTFT
-    ProphetSim --> FutureForecast
+    GBRetrain --> BacktestGB
     AnomalyDetect --> AnomaliesCSV
     BacktestNBEATS --> AnomalyDetect
 
     %% Services Layer
-    subgraph Services & Presentation
+    subgraph Presentation ["Services & Presentation"]
         API["🚪 FastAPI Service<br/>(src/api/main.py:8000)"]:::service
         Dashboard["📊 Streamlit Application<br/>(src/dashboard/app.py:8501)"]:::client
-        Scheduler["⏰ Scheduler Daemon<br/>(schedule_retrain.py / retrain_models.py)"]:::service
+        Scheduler["⏰ Scheduler Daemon<br/>(schedule_retrain.py / run_all_pipelines.py)"]:::service
         EmailAlert["✉️ SMTP Email Server"]:::service
     end
 
-    Gold -.-> API
+    GoldFeat -.-> API
     BacktestNBEATS -.-> API
     BacktestTFT -.-> API
+    BacktestGB -.-> API
     AnomaliesCSV -.-> API
     
     API ==>|Secure HTTP REST| Dashboard
-    FutureForecast -.->|Local CSV Load| Dashboard
     
-    Scheduler -->|Runs 24h Pipeline| TrainBaseline
-    Scheduler -->|Runs 24h Pipeline| TrainTFT
-    Scheduler -->|Runs 24h Pipeline| AnomalyDetect
+    Scheduler -->|Runs Master Pipeline| GBRetrain
+    Scheduler -->|Runs Master Pipeline| AnomalyDetect
     
     AnomalyDetect -.->|Triggers Alert| EmailAlert
 ```
