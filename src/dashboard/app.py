@@ -66,7 +66,7 @@ def login():
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
         st.session_state.username = ""
-        st.session_state.password = ""
+        st.session_state.access_token = ""
         st.session_state.role = ""
 
     if not st.session_state.logged_in:
@@ -75,31 +75,47 @@ def login():
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         if st.button("Login"):
-            creds = USER_CREDENTIALS.get(username)
-            if creds and password == creds["password"]:
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                st.session_state.password = password
-                st.session_state.role = creds["role"]
-            else:
-                st.error("Incorrect username or password")
+            try:
+                resp = requests.post(
+                    f"{API_BASE_URL}/login",
+                    data={"username": username, "password": password},
+                    timeout=5
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    st.session_state.logged_in = True
+                    st.session_state.username = username
+                    st.session_state.access_token = data["access_token"]
+                    
+                    # Extract role from JWT claims (no signature check needed for client decoding)
+                    import jwt
+                    payload = jwt.decode(data["access_token"], options={"verify_signature": False})
+                    st.session_state.role = payload.get("role", "guest")
+                    st.rerun()
+                else:
+                    st.error("Incorrect username or password")
+            except Exception as e:
+                st.error(f"Failed to connect to authentication server: {e}")
         return False
     else:
         st.sidebar.markdown(f"**Logged in as:** {st.session_state.username} ({st.session_state.role})")
         if st.sidebar.button("Logout"):
             st.session_state.logged_in = False
             st.session_state.username = ""
-            st.session_state.password = ""
+            st.session_state.access_token = ""
             st.session_state.role = ""
+            st.rerun()
         return True
 
 @st.cache_data
 def load_data():
-    auth = (st.session_state.username, st.session_state.password) if st.session_state.logged_in else None
+    headers = {}
+    if st.session_state.logged_in and "access_token" in st.session_state:
+        headers["Authorization"] = f"Bearer {st.session_state.access_token}"
 
     def fetch_json(url):
         try:
-            resp = requests.get(url, auth=auth)
+            resp = requests.get(url, headers=headers)
             resp.raise_for_status()
             return resp.json()
         except Exception:

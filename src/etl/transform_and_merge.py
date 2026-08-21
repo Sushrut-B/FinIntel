@@ -117,16 +117,52 @@ def transform_and_merge():
     merged["amount"] = merged["amount_q"] * (merged["Volume"] / quarter_vol_sums)
     merged["count"] = merged["count_q"] * (merged["Volume"] / quarter_vol_sums)
 
-    # Clean up intermediate join columns
-    merged = merged[["month", "Year", "Quarter", "Volume", "Value", "amount", "count"]]
+    # ----------------------------------------------------
+    # 4. Integrate Macroeconomic Data (FRED CPI & Exchange Rate)
+    # ----------------------------------------------------
+    print("Loading and cleaning macroeconomic indicators from FRED...")
+    raw_cpi_path = Path("data/raw/macro/india_cpi.csv")
+    raw_ex_rate_path = Path("data/raw/macro/inr_usd_exchange_rate.csv")
     
-    # Fallback/fill values if any missing
+    # Load and clean CPI
+    if raw_cpi_path.exists():
+        cpi_df = pd.read_csv(raw_cpi_path)
+        cpi_df.columns = [c.strip() for c in cpi_df.columns]
+        cpi_df["month"] = pd.to_datetime(cpi_df["observation_date"])
+        cpi_df["cpi"] = pd.to_numeric(cpi_df["INDCPIALLMINMEI"], errors="coerce")
+        cpi_df = cpi_df[["month", "cpi"]].dropna()
+    else:
+        print("Warning: Raw CPI data not found. Creating placeholder.")
+        cpi_df = pd.DataFrame(columns=["month", "cpi"])
+
+    # Load and clean Exchange Rate
+    if raw_ex_rate_path.exists():
+        ex_df = pd.read_csv(raw_ex_rate_path)
+        ex_df.columns = [c.strip() for c in ex_df.columns]
+        ex_df["month"] = pd.to_datetime(ex_df["observation_date"])
+        ex_df["exchange_rate"] = pd.to_numeric(ex_df["EXINUS"], errors="coerce")
+        ex_df = ex_df[["month", "exchange_rate"]].dropna()
+    else:
+        print("Warning: Raw Exchange Rate data not found. Creating placeholder.")
+        ex_df = pd.DataFrame(columns=["month", "exchange_rate"])
+
+    # Clean up intermediate join columns for the base UPI dataset
+    merged = merged[["month", "Year", "Quarter", "Volume", "Value", "amount", "count"]]
+
+    # Join Macro CPI
+    merged = pd.merge(merged, cpi_df, on="month", how="left")
+    # Join Macro Exchange Rate
+    merged = pd.merge(merged, ex_df, on="month", how="left")
+
+    # Fallback/fill values if any missing (including macro features)
     merged["amount"] = merged["amount"].ffill().bfill()
     merged["count"] = merged["count"].ffill().bfill()
+    merged["cpi"] = merged["cpi"].ffill().bfill()
+    merged["exchange_rate"] = merged["exchange_rate"].ffill().bfill()
     
     # Save Parquet
     merged.to_parquet(gold_path, index=False)
-    print(f"Gold layer monthly dataset created successfully at: {gold_path} with {len(merged)} records.")
+    print(f"Gold layer monthly dataset with macro features created successfully at: {gold_path} with {len(merged)} records.")
     print(merged.head())
 
 if __name__ == "__main__":

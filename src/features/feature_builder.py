@@ -26,6 +26,14 @@ def build_features(input_parquet="data/gold/upi_macro_gold.parquet",
         df[f"roll_volume_{win}m_mean"] = df["Volume"].rolling(win).mean()
         df[f"roll_volume_{win}m_std"]  = df["Volume"].rolling(win).std()
 
+    # Macroeconomic indicator features (lags and rolling averages)
+    for lag in [1, 2]:
+        df[f"lag_cpi_{lag}m"] = df["cpi"].shift(lag)
+        df[f"lag_exchange_rate_{lag}m"] = df["exchange_rate"].shift(lag)
+
+    df["roll_cpi_3m_mean"] = df["cpi"].rolling(3).mean()
+    df["roll_exchange_rate_3m_mean"] = df["exchange_rate"].rolling(3).mean()
+
     # Fill NaNs from lags/rolling windows to keep all historical rows for fitting
     # Using forward fill and backward fill is a standard practice in real-time dashboards
     df = df.ffill().bfill()

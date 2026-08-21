@@ -10,8 +10,11 @@ def run_command(cmd, wait=True):
     return proc
 
 def main():
-    # Start FastAPI server
-    fastapi_proc = run_command(f'"{sys.executable}" -m uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000', wait=False)
+    # Start FastAPI server with multiple workers for high availability and throughput
+    import os
+    workers_count = max(2, min(os.cpu_count() or 2, 8))
+    print(f"Launching FastAPI server with {workers_count} uvicorn processes...")
+    fastapi_proc = run_command(f'"{sys.executable}" -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --workers {workers_count}', wait=False)
 
     # Wait for FastAPI to start fully
     time.sleep(7)

@@ -8,3 +8,10 @@ __pycache__/
 *.pth
 *.zip
 .env
+
+# Local DB & Diagnostic files
+data/finintel.db
+models/*rejected*.pkl
+lightning_logs/
+future_forecast.csv
+upi_historical_data.csv

@@ -30,9 +30,29 @@ def main():
         threshold_multiplier=THRESHOLD_MULTIPLIER
     )
 
-    # Save anomalies
+    # Save anomalies to CSV
     anomalies.to_csv("data/gold/upi_anomalies.csv", index=False)
-    print(f"Anomaly detection complete. {len(anomalies)} anomalies saved using unified service.")
+    print(f"Anomaly detection complete. {len(anomalies)} anomalies saved to CSV.")
+
+    # Sync anomalies to SQLite
+    from src.database.db_manager import get_db_session, AnomalyRecord
+    try:
+        with get_db_session() as session:
+            session.query(AnomalyRecord).delete()
+            if not anomalies.empty:
+                for _, row in anomalies.iterrows():
+                    rec = AnomalyRecord(
+                        ds=str(row["ds"]),
+                        y=float(row["y"]),
+                        forecast=float(row["forecast"]),
+                        residual=float(row["residual"]),
+                        type=str(row["type"])
+                    )
+                    session.add(rec)
+            session.commit()
+            print(f"Synced {len(anomalies)} anomalies to SQLite database.")
+    except Exception as e:
+        print(f"Error syncing anomalies to SQLite: {e}")
 
 if __name__ == "__main__":
     main()

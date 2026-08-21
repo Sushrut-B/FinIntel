@@ -18,8 +18,11 @@ def main():
     try:
         # Step 1: Dynamic NPCI stats ingestion
         run_script("src/data/ingest_npci.py")
+
+        # Step 1.5: Dynamic FRED macroeconomic stats ingestion (CPI & Exchange Rates)
+        run_script("src/data/ingest_macro.py")
         
-        # Step 2: Unified transform & merge (upsampling PhonePe data)
+        # Step 2: Unified transform & merge (upsampling PhonePe data + joining macro data)
         run_script("src/etl/transform_and_merge.py")
         
         # Step 3: Feature builder (dynamic holidays, lags, rolling stats)
